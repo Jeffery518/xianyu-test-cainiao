@@ -3372,6 +3372,67 @@ class XianyuSliderStealth:
             # 等待一小段时间让验证结果出现
             time.sleep(0.3)
             
+            # 辅助函数：检查是否有验证成功的指示符
+            def check_success_indicators():
+                """检查滑块验证成功的指示符（文字/样式变化）"""
+                try:
+                    # 在frame中检查成功标志
+                    success_selectors = [
+                        '.nc-lang-cnt',  # 滑块提示文字区域
+                        '.nc_iconfont.icon_ok',  # 成功图标
+                        '.nc-lang-cnt:has-text("验证通过")',
+                        '[class*="success"]',
+                        '.scale_text.slidetounlock',  # 滑块完成状态
+                    ]
+                    success_keywords = ['验证通过', '验证成功', '通过', 'success', '✓']
+                    
+                    for selector in success_selectors:
+                        try:
+                            el = target_frame.query_selector(selector)
+                            if el:
+                                text = ''
+                                try:
+                                    text = el.text_content() or ''
+                                except:
+                                    pass
+                                for keyword in success_keywords:
+                                    if keyword in text:
+                                        logger.info(f"【{self.pure_user_id}】✓ 检测到验证成功指示符: '{keyword}' (选择器: {selector})")
+                                        return True
+                                # 检查元素的class是否包含成功相关的类
+                                try:
+                                    class_name = el.get_attribute('class') or ''
+                                    if 'ok' in class_name or 'success' in class_name or 'pass' in class_name:
+                                        logger.info(f"【{self.pure_user_id}】✓ 检测到成功类名: {class_name}")
+                                        return True
+                                except:
+                                    pass
+                        except:
+                            continue
+                    
+                    # 额外检查：滑块按钮是否移到了轨道末端（通过style检测）
+                    try:
+                        btn = target_frame.query_selector('#nc_1_n1z')
+                        if btn:
+                            style = btn.get_attribute('style') or ''
+                            if 'left' in style:
+                                import re
+                                match = re.search(r'left:\s*([\d.]+)px', style)
+                                if match:
+                                    left_val = float(match.group(1))
+                                    if left_val > 280:  # 滑块已经到达接近末端的位置
+                                        # 检查是否有错误提示，如果没有则可能成功
+                                        err = target_frame.query_selector('.errloading')
+                                        if not err or not err.is_visible():
+                                            logger.info(f"【{self.pure_user_id}】✓ 滑块已到末端(left={left_val}px)且无错误提示，可能验证成功")
+                                            return True
+                    except:
+                        pass
+                    
+                    return False
+                except:
+                    return False
+            
             # 核心逻辑：首先检查frame容器状态
             # 如果容器消失，直接返回成功；如果容器还在，检查失败提示
             def check_container_status():
@@ -3418,6 +3479,11 @@ class XianyuSliderStealth:
                     logger.warning(f"【{self.pure_user_id}】检查容器状态时出错: {e}")
                     return (True, True)
             
+            # 第一次检查：先检查成功指示符
+            if check_success_indicators():
+                logger.info(f"【{self.pure_user_id}】✓ 检测到验证成功指示符，验证成功")
+                return True
+            
             # 第一次检查容器状态
             container_exists, container_visible = check_container_status()
             
@@ -3428,7 +3494,12 @@ class XianyuSliderStealth:
             
             # 容器还在，需要等待更长时间并检查失败提示
             logger.info(f"【{self.pure_user_id}】滑块容器仍存在且可见，等待验证结果...")
-            time.sleep(1.2)  # 等待验证结果
+            time.sleep(1.5)  # 等待验证结果（增加到1.5秒）
+            
+            # 第二次检查成功指示符
+            if check_success_indicators():
+                logger.info(f"【{self.pure_user_id}】✓ 等待后检测到验证成功指示符，验证成功")
+                return True
             
             # 再次检查容器状态
             container_exists, container_visible = check_container_status()
@@ -3444,18 +3515,32 @@ class XianyuSliderStealth:
                 logger.warning(f"【{self.pure_user_id}】检测到验证失败提示，验证失败")
                 return False
             
-            # 容器还在，但没有失败提示，可能还在验证中或验证失败
-            # 再等待一小段时间后再次检查
-            time.sleep(0.5)
-            container_exists, container_visible = check_container_status()
+            # 容器还在，但没有失败提示，可能还在验证中
+            # 做最后一轮等待检查（增加一轮）
+            logger.info(f"【{self.pure_user_id}】未检测到失败提示，再等待1.5秒做最终确认...")
+            time.sleep(1.5)
             
-            if not container_exists or not container_visible:
-                logger.info(f"【{self.pure_user_id}】✓ 滑块容器已消失，验证成功")
+            # 最终检查成功指示符
+            if check_success_indicators():
+                logger.info(f"【{self.pure_user_id}】✓ 最终确认检测到验证成功指示符，验证成功")
                 return True
             
-            # 容器仍然存在，且没有失败提示，可能是验证失败但没有显示失败提示
-            # 或者验证还在进行中，但为了不无限等待，返回失败
-            logger.warning(f"【{self.pure_user_id}】滑块容器仍存在且可见，且未检测到失败提示，但验证可能失败")
+            container_exists, container_visible = check_container_status()
+            if not container_exists or not container_visible:
+                logger.info(f"【{self.pure_user_id}】✓ 最终确认滑块容器已消失，验证成功")
+                return True
+            
+            # 容器仍然存在，且没有失败提示
+            # 检查是否有errloading（加载错误，说明验证失败但无明确提示）
+            try:
+                err_el = target_frame.query_selector('.errloading')
+                if err_el and err_el.is_visible():
+                    logger.warning(f"【{self.pure_user_id}】检测到errloading，验证失败")
+                    return False
+            except:
+                pass
+            
+            logger.warning(f"【{self.pure_user_id}】滑块容器仍存在且可见，且未检测到失败提示，验证可能失败")
             return False
             
         except Exception as e:
@@ -3596,16 +3681,19 @@ class XianyuSliderStealth:
             
             # 确定要点击的frame（使用已知的滑块frame）
             target_frame = None
+            is_page = False
             if hasattr(self, '_detected_slider_frame') and self._detected_slider_frame is not None:
                 target_frame = self._detected_slider_frame
                 logger.info(f"【{self.pure_user_id}】将在已知Frame中查找并点击")
             else:
                 target_frame = self.page
+                is_page = True
                 logger.info(f"【{self.pure_user_id}】将在主页面中查找并点击")
             
             # 🔑 优化：按优先级尝试点击不同的区域
-            # 优先点击容器/包装器，因为这样更可靠
             click_selectors = [
+                (".errloading", "错误加载提示"),
+                (".nc-lang-cnt", "滑块提示文字"),
                 (".nc-container", "滑块容器"),
                 (".nc_wrapper", "滑块包装器"),  
                 (".nc_scale", "滑块轨道区域"),
@@ -3620,24 +3708,27 @@ class XianyuSliderStealth:
                     element = target_frame.query_selector(selector)
                     if element:
                         try:
-                            # 获取元素位置，点击中心
-                            box = element.bounding_box()
-                            if box:
-                                click_x = box['x'] + box['width'] / 2
-                                click_y = box['y'] + box['height'] / 2
-                                target_frame.mouse.click(click_x, click_y)
-                                logger.info(f"【{self.pure_user_id}】✅ 已点击{desc}: {selector} (位置: {click_x:.1f}, {click_y:.1f})")
-                                clicked = True
-                                time.sleep(0.3)  # 短暂等待
-                                break
-                            else:
-                                # 如果无法获取位置，直接点击元素
-                                element.click(timeout=1000)
-                                logger.info(f"【{self.pure_user_id}】✅ 已点击{desc}: {selector}")
-                                clicked = True
-                                time.sleep(0.3)
-                                break
+                            # 优先使用 element.click()（兼容 Frame 和 Page）
+                            element.click(timeout=2000)
+                            logger.info(f"【{self.pure_user_id}】✅ 已点击{desc}: {selector}")
+                            clicked = True
+                            time.sleep(0.3)  # 短暂等待
+                            break
                         except Exception as click_e:
+                            # 如果 element.click() 失败，尝试通过 Page 级别的 mouse（仅在主页面时可用）
+                            if is_page:
+                                try:
+                                    box = element.bounding_box()
+                                    if box:
+                                        click_x = box['x'] + box['width'] / 2
+                                        click_y = box['y'] + box['height'] / 2
+                                        self.page.mouse.click(click_x, click_y)
+                                        logger.info(f"【{self.pure_user_id}】✅ 通过mouse已点击{desc}: {selector} (位置: {click_x:.1f}, {click_y:.1f})")
+                                        clicked = True
+                                        time.sleep(0.3)
+                                        break
+                                except Exception as mouse_e:
+                                    logger.debug(f"【{self.pure_user_id}】mouse点击{desc}也失败: {mouse_e}")
                             logger.debug(f"【{self.pure_user_id}】点击{desc} {selector} 失败: {click_e}")
                             continue
                 except Exception as find_e:
@@ -3646,7 +3737,7 @@ class XianyuSliderStealth:
             
             if clicked:
                 logger.info(f"【{self.pure_user_id}】成功点击失败提示区域，等待滑块重新加载...")
-                time.sleep(0.8)  # 等待滑块重新加载（增加等待时间）
+                time.sleep(1.0)  # 等待滑块重新加载
                 return True
             else:
                 logger.warning(f"【{self.pure_user_id}】未找到可点击的失败提示区域，滑块可能已存在")
