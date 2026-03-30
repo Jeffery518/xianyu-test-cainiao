@@ -388,13 +388,26 @@
                 
                 ws = new WebSocket(wsUrl);
 
+                let pingInterval;
+
                 ws.onopen = () => {
                     log('WebSocket 连接成功', 'success');
                     updateStatus('connected', '已连接');
+
+                    // 启动心跳
+                    pingInterval = setInterval(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'ping' }));
+                        }
+                    }, 5000); // 每5秒发一次心跳
                 };
 
                 ws.onmessage = async (event) => {
                     const data = JSON.parse(event.data);
+                    if (data.type === 'pong') {
+                        // 收到心跳响应，无需在界面打印，以免日志过多
+                        return;
+                    }
                     handleWebSocketMessage(data);
                 };
 
@@ -408,6 +421,9 @@
                     log('WebSocket 连接关闭', 'info');
                     updateStatus('disconnected', '连接已关闭');
                     document.getElementById('connectBtn').disabled = false;
+                    if (pingInterval) {
+                        clearInterval(pingInterval);
+                    }
                 };
 
             } catch (error) {

@@ -292,18 +292,7 @@ class CaptchaRemoteController:
             if found_visible_captcha:
                 return False
             
-            # 额外检查：看页面内容是否还包含滑块相关文字
-            try:
-                page_content = await page.content()
-                captcha_keywords = ['scratch-captcha', 'nocaptcha', 'slider-btn']
-                
-                # 如果页面中仍然有大量滑块相关内容，可能还未完成
-                keyword_count = sum(1 for kw in captcha_keywords if kw in page_content)
-                if keyword_count >= 2:
-                    logger.debug(f"页面中仍有 {keyword_count} 个滑块关键词")
-                    return False
-            except:
-                pass
+            # 移除额外关键字检查，因为DOM元素可能只是隐藏而未被删除
             
             # 所有检查都通过，认为验证完成
             logger.success(f"✅ 验证完成（所有滑块元素已消失）: {session_id}")
