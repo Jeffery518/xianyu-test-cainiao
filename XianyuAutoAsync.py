@@ -4871,31 +4871,45 @@ class XianyuLive:
             
             if result:
                 logger.info(f"【{self.cookie_id}】密码登录成功，获取到Cookie")
-                logger.info(f"【{self.cookie_id}】Cookie内容: {result}")
                 
-                # 打印密码登录获取的Cookie字段详情
-                logger.info(f"【{self.cookie_id}】========== 密码登录Cookie字段详情 ==========")
-                logger.info(f"【{self.cookie_id}】Cookie字段数: {len(result)}")
-                logger.info(f"【{self.cookie_id}】Cookie字段列表:")
-                for i, (key, value) in enumerate(result.items(), 1):
-                    if len(str(value)) > 50:
-                        logger.info(f"【{self.cookie_id}】  {i:2d}. {key}: {str(value)[:30]}...{str(value)[-20:]} (长度: {len(str(value))})")
-                    else:
-                        logger.info(f"【{self.cookie_id}】  {i:2d}. {key}: {value}")
-                
-                # 检查关键字段
-                important_keys = ['unb', '_m_h5_tk', '_m_h5_tk_enc', 'cookie2', 't', 'sgcookie', 'cna']
-                logger.info(f"【{self.cookie_id}】关键字段检查:")
-                for key in important_keys:
-                    if key in result:
-                        val = result[key]
-                        logger.info(f"【{self.cookie_id}】  ✅ {key}: {'存在' if val else '为空'} (长度: {len(str(val)) if val else 0})")
-                    else:
-                        logger.info(f"【{self.cookie_id}】  ❌ {key}: 缺失")
-                logger.info(f"【{self.cookie_id}】==========================================")
-                
-                # 将cookie字典转换为字符串格式
-                new_cookies_str = '; '.join([f"{k}={v}" for k, v in result.items()])
+                # 兼容两种返回类型：str（已登录状态直接提取）或 dict（正常登录流程）
+                if isinstance(result, str):
+                    # 已登录状态直接返回的cookies字符串
+                    new_cookies_str = result
+                    logger.info(f"【{self.cookie_id}】Cookie类型: 字符串（已登录状态提取）")
+                    logger.info(f"【{self.cookie_id}】Cookie长度: {len(new_cookies_str)}")
+                    
+                    # 解析字符串检查关键字段
+                    important_keys = ['unb', '_m_h5_tk', '_m_h5_tk_enc', 'cookie2', 'sgcookie', 'cna']
+                    logger.info(f"【{self.cookie_id}】关键字段检查:")
+                    for key in important_keys:
+                        if f"{key}=" in new_cookies_str:
+                            logger.info(f"【{self.cookie_id}】  ✅ {key}: 存在")
+                        else:
+                            logger.info(f"【{self.cookie_id}】  ❌ {key}: 缺失")
+                else:
+                    # 字典类型（原有登录流程返回）
+                    logger.info(f"【{self.cookie_id}】Cookie类型: 字典（登录流程获取）")
+                    logger.info(f"【{self.cookie_id}】Cookie字段数: {len(result)}")
+                    logger.info(f"【{self.cookie_id}】Cookie字段列表:")
+                    for i, (key, value) in enumerate(result.items(), 1):
+                        if len(str(value)) > 50:
+                            logger.info(f"【{self.cookie_id}】  {i:2d}. {key}: {str(value)[:30]}...{str(value)[-20:]} (长度: {len(str(value))})")
+                        else:
+                            logger.info(f"【{self.cookie_id}】  {i:2d}. {key}: {value}")
+                    
+                    # 检查关键字段
+                    important_keys = ['unb', '_m_h5_tk', '_m_h5_tk_enc', 'cookie2', 't', 'sgcookie', 'cna']
+                    logger.info(f"【{self.cookie_id}】关键字段检查:")
+                    for key in important_keys:
+                        if key in result:
+                            val = result[key]
+                            logger.info(f"【{self.cookie_id}】  ✅ {key}: {'存在' if val else '为空'} (长度: {len(str(val)) if val else 0})")
+                        else:
+                            logger.info(f"【{self.cookie_id}】  ❌ {key}: 缺失")
+                    
+                    # 将cookie字典转换为字符串格式
+                    new_cookies_str = '; '.join([f"{k}={v}" for k, v in result.items()])
                 logger.info(f"【{self.cookie_id}】Cookie字符串摘要: {self._summarize_cookie_string(new_cookies_str)}")
                 
                 # 记录密码登录时间，防止重复登录
