@@ -3686,16 +3686,46 @@ class XianyuSliderStealth:
                     logger.info(f"【{self.pure_user_id}】⏳ 等待{retry_delay:.1f}秒后刷新重试...")
                     time.sleep(retry_delay)
 
-                    # 🔑 关键修复：刷新页面获取新的滑块挑战（提高重试成功率）
-                    logger.info(f"【{self.pure_user_id}】🔄 刷新页面获取新的滑块挑战...")
-                    try:
-                        self.page.reload(wait_until='networkidle', timeout=15000)
-                        time.sleep(1.0)  # 等待页面稳定
-                        logger.info(f"【{self.pure_user_id}】✅ 页面刷新完成，准备重新检测滑块")
-                    except Exception as refresh_error:
-                        logger.warning(f"【{self.pure_user_id}】⚠️ 页面刷新失败: {refresh_error}，尝试点击重置")
-                        # 刷新失败时回退到点击重置方式
-                        self.click_to_reset_slider()
+                    # 🔑 关键修复：不刷新整个页面（会销毁滑块iframe），改用点击重置方式
+                    # 滑块验证在嵌套iframe中，page.reload() 会导致iframe被销毁
+                    logger.info(f"【{self.pure_user_id}】🔄 尝试在iframe内部重置滑块...")
+                    reset_success = self.click_to_reset_slider()
+                    
+                    if not reset_success:
+                        # 点击重置失败，尝试在已知的滑块frame中查找重置元素
+                        logger.info(f"【{self.pure_user_id}】点击重置失败，尝试在frame中查找重置元素...")
+                        if hasattr(self, '_detected_slider_frame') and self._detected_slider_frame is not None:
+                            try:
+                                frame = self._detected_slider_frame
+                                # 尝试点击各种可能的重置/重试元素
+                                reset_selectors = [
+                                    ('.errloading', '错误加载提示'),
+                                    ('.nc-lang-cnt', '滑块提示文字'),
+                                    ('.nc-container', '滑块容器'),
+                                    ('.nc_wrapper', '滑块包装器'),
+                                    ('#nc_1__bg', '背景区域'),
+                                    ('.btn_slide', '滑块按钮'),
+                                ]
+                                for selector, desc in reset_selectors:
+                                    try:
+                                        el = frame.query_selector(selector)
+                                        if el and el.is_visible():
+                                            el.click()
+                                            logger.info(f"【{self.pure_user_id}】✅ 在frame中点击了{desc}: {selector}")
+                                            time.sleep(1.0)
+                                            reset_success = True
+                                            break
+                                    except:
+                                        continue
+                            except Exception as e:
+                                logger.debug(f"【{self.pure_user_id}】frame内重置失败: {e}")
+                    
+                    if reset_success:
+                        logger.info(f"【{self.pure_user_id}】✅ 滑块重置完成，等待新滑块加载...")
+                        time.sleep(2.0)  # 等待滑块重新加载
+                    else:
+                        logger.warning(f"【{self.pure_user_id}】⚠️ 滑块重置失败，等待后重新检测...")
+                        time.sleep(3.0)  # 重置失败，多等一会
 
                     # 清除缓存的frame引用，强制重新检测滑块位置
                     if hasattr(self, '_detected_slider_frame'):
@@ -4137,20 +4167,15 @@ class XianyuSliderStealth:
                                     logger.success(f"【{self.pure_user_id}】✅ 滑块验证成功！")
                                     time.sleep(3)  # 等待滑块验证后的状态更新
                                 else:
-                                    # 3次失败后，刷新页面重试
-                                    logger.warning(f"【{self.pure_user_id}】⚠️ 滑块处理3次都失败，刷新页面后重试...")
-                                    try:
-                                        self.page.reload(wait_until="domcontentloaded", timeout=30000)
-                                        logger.info(f"【{self.pure_user_id}】✅ 页面刷新完成")
-                                        time.sleep(2)
-                                        slider_success = self.solve_slider(max_retries=3)
-                                        if not slider_success:
-                                            logger.error(f"【{self.pure_user_id}】❌ 刷新后滑块验证仍然失败")
-                                        else:
-                                            logger.success(f"【{self.pure_user_id}】✅ 刷新后滑块验证成功！")
-                                            time.sleep(3)
-                                    except Exception as e:
-                                        logger.error(f"【{self.pure_user_id}】❌ 页面刷新失败: {e}")
+                                    # 3次失败后，不刷新页面（会销毁滑块iframe），而是等待后重新尝试
+                                    logger.warning(f"【{self.pure_user_id}】⚠️ 滑块处理3次都失败，等待后重新尝试...")
+                                    time.sleep(3)  # 等待一段时间让滑块状态稳定
+                                    slider_success = self.solve_slider(max_retries=3)
+                                    if not slider_success:
+                                        logger.error(f"【{self.pure_user_id}】❌ 重试后滑块验证仍然失败")
+                                    else:
+                                        logger.success(f"【{self.pure_user_id}】✅ 重试后滑块验证成功！")
+                                        time.sleep(3)
                                 
                                 # 清理临时变量
                                 if hasattr(self, '_detected_slider_frame'):
@@ -5150,22 +5175,16 @@ class XianyuSliderStealth:
                             logger.success(f"【{self.pure_user_id}】✅ 滑块验证成功！")
                             time.sleep(3)  # 等待滑块验证后的状态更新
                         else:
-                            # 3次失败后，刷新页面重试
-                            logger.warning(f"【{self.pure_user_id}】⚠️ 滑块处理3次都失败，刷新页面后重试...")
-                            try:
-                                page.reload(wait_until="domcontentloaded", timeout=30000)
-                                logger.info(f"【{self.pure_user_id}】✅ 页面刷新完成")
-                                time.sleep(2)
-                                slider_success = self.solve_slider(max_retries=3)
-                                if not slider_success:
-                                    logger.error(f"【{self.pure_user_id}】❌ 刷新后滑块验证仍然失败")
-                                    return None
-                                else:
-                                    logger.success(f"【{self.pure_user_id}】✅ 刷新后滑块验证成功！")
-                                    time.sleep(3)
-                            except Exception as e:
-                                logger.error(f"【{self.pure_user_id}】❌ 页面刷新失败: {e}")
+                            # 3次失败后，不刷新页面（会销毁滑块iframe），等待后重新尝试
+                            logger.warning(f"【{self.pure_user_id}】⚠️ 滑块处理3次都失败，等待后重新尝试...")
+                            time.sleep(3)  # 等待一段时间让滑块状态稳定
+                            slider_success = self.solve_slider(max_retries=3)
+                            if not slider_success:
+                                logger.error(f"【{self.pure_user_id}】❌ 重试后滑块验证仍然失败")
                                 return None
+                            else:
+                                logger.success(f"【{self.pure_user_id}】✅ 重试后滑块验证成功！")
+                                time.sleep(3)
                     
                     # 检查登录状态
                     logger.info(f"【{self.pure_user_id}】等待1秒后检查登录状态...")
