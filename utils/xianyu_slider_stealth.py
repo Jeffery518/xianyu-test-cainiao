@@ -4828,10 +4828,77 @@ class XianyuSliderStealth:
                 time.sleep(wait_time)
                 
                 # 页面诊断信息
+                current_url = page.url
+                current_title = page.title()
                 logger.info(f"【{self.pure_user_id}】========== 页面诊断信息 ==========")
-                logger.info(f"【{self.pure_user_id}】当前URL: {page.url}")
-                logger.info(f"【{self.pure_user_id}】页面标题: {page.title()}")
+                logger.info(f"【{self.pure_user_id}】当前URL: {current_url}")
+                logger.info(f"【{self.pure_user_id}】页面标题: {current_title}")
                 logger.info(f"【{self.pure_user_id}】=====================================")
+                
+                # 🔑 关键检查：判断是否已经登录成功
+                # 如果URL是 /im 且标题包含"聊天"，说明浏览器session有效，无需重新密码登录
+                already_logged_in = False
+                if '/im' in current_url and ('聊天' in current_title or '闲鱼' in current_title):
+                    logger.info(f"【{self.pure_user_id}】🔍 页面URL和标题显示可能已登录，验证登录状态...")
+                    
+                    # 通过页面元素进一步确认登录状态
+                    login_confirmed = self._check_login_success_by_element(page)
+                    if login_confirmed:
+                        already_logged_in = True
+                        logger.success(f"【{self.pure_user_id}】✅ 浏览器已处于登录状态！直接提取cookies，无需重新登录")
+                    else:
+                        # 即使元素检查失败，URL和标题已经说明登录成功
+                        # 尝试获取cookies看看是否有效
+                        try:
+                            browser_cookies = context.cookies()
+                            has_key_cookies = any(
+                                c['name'] in ['_m_h5_tk', '_m_h5_tk_enc', 'cookie2', 'sgcookie', 'unb'] 
+                                for c in browser_cookies
+                            )
+                            if has_key_cookies:
+                                already_logged_in = True
+                                logger.success(f"【{self.pure_user_id}】✅ 浏览器cookies包含关键字段，确认已登录！")
+                            else:
+                                logger.info(f"【{self.pure_user_id}】浏览器cookies缺少关键字段，可能需要重新登录")
+                        except Exception as cookie_check_e:
+                            logger.debug(f"【{self.pure_user_id}】检查cookies时出错: {cookie_check_e}")
+                
+                if already_logged_in:
+                    # 已经登录，直接提取cookies并返回
+                    logger.info(f"【{self.pure_user_id}】提取已登录状态的cookies...")
+                    try:
+                        browser_cookies = context.cookies()
+                        cookies_dict = {}
+                        for cookie in browser_cookies:
+                            cookies_dict[cookie['name']] = cookie['value']
+                        
+                        new_cookies_str = '; '.join([f"{name}={value}" for name, value in cookies_dict.items()])
+                        
+                        if new_cookies_str and len(new_cookies_str) > 100:
+                            logger.success(f"【{self.pure_user_id}】✅ 已登录状态cookies提取成功（{len(new_cookies_str)}字符）")
+                            
+                            # 更新数据库
+                            try:
+                                from db_manager import db_manager
+                                db_manager.update_cookie_value(self.user_id, new_cookies_str)
+                                logger.info(f"【{self.pure_user_id}】✅ 已更新cookies到数据库")
+                            except Exception as db_e:
+                                logger.error(f"【{self.pure_user_id}】更新数据库失败: {db_e}")
+                            
+                            # 清理浏览器资源
+                            try:
+                                page.close()
+                                context.close()
+                                browser.close()
+                                playwright_instance.stop()
+                            except:
+                                pass
+                            
+                            return new_cookies_str
+                        else:
+                            logger.warning(f"【{self.pure_user_id}】已登录cookies太短，可能无效，继续登录流程")
+                    except Exception as extract_e:
+                        logger.warning(f"【{self.pure_user_id}】提取已登录cookies失败: {extract_e}，继续登录流程")
                 
                 # 【步骤1】查找登录frame（闲鱼登录通常在iframe中）
                 logger.info(f"【{self.pure_user_id}】查找登录frame...")
