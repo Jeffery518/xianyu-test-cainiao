@@ -4789,7 +4789,15 @@ class XianyuLive:
         
         if last_password_login > 0 and time_since_last_login < XianyuLive._password_login_cooldown:
             remaining_time = XianyuLive._password_login_cooldown - time_since_last_login
-            logger.warning(f"【{self.cookie_id}】距离上次密码登录仅 {time_since_last_login:.1f} 秒，仍在冷却期内（还需等待 {remaining_time:.1f} 秒），跳过密码登录")
+            logger.warning(f"【{self.cookie_id}】距离上次密码登录仅 {time_since_last_login:.1f} 秒，仍在冷却期内（还需等待 {remaining_time:.1f} 秒）")
+            
+            # 🔑 关键修复：如果冷却期内再次触发说明上次获取的cookies无效
+            # 清除冷却计时器，等冷却期结束后允许立即重新登录
+            if time_since_last_login > 30:
+                # 已等待超过30秒，说明之前的cookies确实无效，清除冷却
+                logger.warning(f"【{self.cookie_id}】已等待 {time_since_last_login:.1f}s，上次cookies可能无效，清除冷却计时器")
+                XianyuLive._last_password_login_time[self.cookie_id] = 0
+            
             logger.warning(f"【{self.cookie_id}】提示：如果新Cookie仍然无效，请检查账号状态或手动更新Cookie")
             return False
 

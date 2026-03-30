@@ -4836,32 +4836,21 @@ class XianyuSliderStealth:
                 logger.info(f"【{self.pure_user_id}】=====================================")
                 
                 # 🔑 关键检查：判断是否已经登录成功
-                # 如果URL是 /im 且标题包含"聊天"，说明浏览器session有效，无需重新密码登录
+                # 只有页面元素确认（列表有实际数据）才认为已登录
+                # 注意：goofish.com/im 即使未登录也会加载页面外壳和设置基础cookies
                 already_logged_in = False
                 if '/im' in current_url and ('聊天' in current_title or '闲鱼' in current_title):
-                    logger.info(f"【{self.pure_user_id}】🔍 页面URL和标题显示可能已登录，验证登录状态...")
+                    logger.info(f"【{self.pure_user_id}】🔍 页面URL和标题显示可能已登录，通过页面元素严格验证...")
                     
-                    # 通过页面元素进一步确认登录状态
+                    # 必须通过页面元素确认：列表有实际数据才算真正登录
                     login_confirmed = self._check_login_success_by_element(page)
                     if login_confirmed:
                         already_logged_in = True
-                        logger.success(f"【{self.pure_user_id}】✅ 浏览器已处于登录状态！直接提取cookies，无需重新登录")
+                        logger.success(f"【{self.pure_user_id}】✅ 浏览器已处于登录状态！列表有实际内容，直接提取cookies")
                     else:
-                        # 即使元素检查失败，URL和标题已经说明登录成功
-                        # 尝试获取cookies看看是否有效
-                        try:
-                            browser_cookies = context.cookies()
-                            has_key_cookies = any(
-                                c['name'] in ['_m_h5_tk', '_m_h5_tk_enc', 'cookie2', 'sgcookie', 'unb'] 
-                                for c in browser_cookies
-                            )
-                            if has_key_cookies:
-                                already_logged_in = True
-                                logger.success(f"【{self.pure_user_id}】✅ 浏览器cookies包含关键字段，确认已登录！")
-                            else:
-                                logger.info(f"【{self.pure_user_id}】浏览器cookies缺少关键字段，可能需要重新登录")
-                        except Exception as cookie_check_e:
-                            logger.debug(f"【{self.pure_user_id}】检查cookies时出错: {cookie_check_e}")
+                        # 元素检查失败说明页面只是外壳，用户未真正认证
+                        # 不要用cookie字段作为判据（_m_h5_tk等是页面加载时自动设置的）
+                        logger.info(f"【{self.pure_user_id}】页面元素检查未通过（列表无内容），需要走登录流程")
                 
                 if already_logged_in:
                     # 已经登录，直接提取cookies并返回
